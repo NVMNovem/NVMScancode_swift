@@ -5,8 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "NVMScancode",
+    defaultLocalization: "en",
     platforms: [
-        .macOS(.v11), .iOS(.v13), .tvOS(.v14)
+        .iOS(.v13),
+        .macOS(.v11),
+        .tvOS(.v13),
+        .watchOS(.v4)
     ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.

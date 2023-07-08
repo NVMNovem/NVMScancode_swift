@@ -6,8 +6,15 @@
 ---
 
 A pure Swift library that allows you to scan codes and present them.
+This package is based on two combined projects, in combination with small modifications.
 
-This project is created and maintained by Novem.
+CodeScanner from [dagronf](https://github.com/dagronf)
+https://github.com/dagronf/QRCode
+
+CodeScanner from [twostraws](https://github.com/twostraws)
+https://github.com/twostraws/CodeScanner
+
+This project is maintained by Novem.
 
 ---
 
