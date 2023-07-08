@@ -23,7 +23,7 @@ import CoreGraphics
 public extension CGImage {
 	/// Load a CGImage from an image asset
 	static func named(_ name: String) -> CGImage? {
-		PlatformImage(named: name)?.cgImage
+		PlatformImage(named: name)?.asCGImage
 	}
 
 	/// The size of the CGImage

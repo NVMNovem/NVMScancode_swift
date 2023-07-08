@@ -33,3 +33,20 @@ public typealias PlatformImage = UIImage
 // HEIC definition.
 @usableFromInline internal let kUTTypeHEIC = "public.heic" as CFString
 @usableFromInline internal let kUTTypeSVG = "public.svg-image" as CFString
+
+public extension PlatformImage {
+    
+    /// A trival CGImage representation for an NSImage
+    ///
+    /// Useful for synchronising the AppKit/UIKit apis
+    @inlinable @inline(__always) var asCGImage: CGImage? {
+        #if os(macOS)
+        if let image = self.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            return image
+        }
+        return self.ciImage?.cgImage()
+        #else
+        return self.cgImage
+        #endif
+    }
+}

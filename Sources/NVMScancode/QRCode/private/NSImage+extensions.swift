@@ -57,7 +57,7 @@ extension NSImage {
 import UIKit.UIImage
 
 extension UIImage {
-	func cgImage() -> CGImage? { self.cgImage }
+	func cgImage() -> CGImage? { self.asCGImage }
 }
 
 #endif

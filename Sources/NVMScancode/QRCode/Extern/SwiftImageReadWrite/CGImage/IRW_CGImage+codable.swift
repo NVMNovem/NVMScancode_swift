@@ -35,7 +35,7 @@ public extension CGImageCodable {
 		guard let imageData = try? container.decode(Data.self) else {
 			throw ImageReadWriteError.codableInvalidData
 		}
-		guard let image = PlatformImage(data: imageData)?.cgImage else {
+		guard let image = PlatformImage(data: imageData)?.asCGImage else {
 			throw ImageReadWriteError.codableInvalidImage
 		}
 		self.image = image

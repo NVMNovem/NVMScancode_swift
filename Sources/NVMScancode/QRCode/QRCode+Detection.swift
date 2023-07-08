@@ -78,7 +78,7 @@ public extension QRCode {
 	///
 	/// Note: If the QR code contains raw data (ie. not a string) CoreImage has no mechanism to extract raw data.
 	@objc static func DetectQRCodes(in image: UIImage) -> [CIQRCodeFeature]? {
-		guard let im = image.cgImage else {
+		guard let im = image.asCGImage else {
 			return nil
 		}
 		return Self.DetectQRCodes(im)

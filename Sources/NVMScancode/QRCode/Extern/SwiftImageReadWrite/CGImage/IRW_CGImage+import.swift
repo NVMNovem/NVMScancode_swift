@@ -23,7 +23,7 @@ import CoreGraphics
 public extension CGImage {
 	/// Load a CGImage from raw image data
 	static func load(imageData: Data) throws -> CGImage {
-		guard let image = PlatformImage(data: imageData)?.cgImage else {
+		guard let image = PlatformImage(data: imageData)?.asCGImage else {
 			throw ImageReadWriteError.unableToDecodeImage
 		}
 		return image

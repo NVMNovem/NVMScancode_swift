@@ -35,7 +35,7 @@ public extension PlatformImage {
 	/// - Parameter type: The format type to export (with options)
 	/// - Returns: The formatted data
 	@inlinable func imageData(for type: ImageExportType) throws -> Data {
-		guard let image = self.cgImage else {
+		guard let image = self.asCGImage else {
 			throw ImageReadWriteError.cannotCreateCGImage
 		}
 		return try image.imageData(for: type)
@@ -165,7 +165,7 @@ public extension PlatformImage {
 			excludeGPSData: Bool = false,
 			otherOptions: [String: Any]? = nil
 		) throws -> Data {
-			guard let image = owner.cgImage else {
+			guard let image = owner.asCGImage else {
 				throw ImageReadWriteError.cannotCreateCGImage
 			}
 			return try image.representation.rawImageData(
