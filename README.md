@@ -1,4 +1,4 @@
-![NVMScancode_header](https://github.com/NVMNovem/NVMScancode_swift/assets/44820440/91714983-a699-43b7-ada9-a67ffdc27838)
+![NVMScancode_header](https://github.com/NVMNovem/NVMScancode_swift/assets/44820440/ec801077-d497-4b99-991e-4420f8161c41)
 
 
 <h3 align="center">iOS · macOS · watchOS · tvOS</h3>
@@ -8,10 +8,10 @@
 A pure Swift library that allows you to scan codes and present them.
 This package is based on two combined projects, in combination with small modifications.
 
-CodeScanner from [dagronf](https://github.com/dagronf)
+CodeScanner from [dagronf](https://github.com/dagronf): 
 https://github.com/dagronf/QRCode
 
-CodeScanner from [twostraws](https://github.com/twostraws)
+CodeScanner from [twostraws](https://github.com/twostraws): 
 https://github.com/twostraws/CodeScanner
 
 This project is maintained by Novem.
