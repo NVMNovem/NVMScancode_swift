@@ -27,10 +27,12 @@ import AppKit
 #endif
 
 @available(iOS 13.0, macCatalyst 14.0, macOS 13.0, *)
+@available(watchOS, unavailable)
+@available(tvOS, unavailable)
 extension ScanView {
     
-    #if canImport(UIKit)
-    public class ScannerViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVCaptureMetadataOutputObjectsDelegate, UIAdaptivePresentationControllerDelegate {
+    #if os(iOS)
+    public class ScannerViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate, AVCaptureMetadataOutputObjectsDelegate, UIAdaptivePresentationControllerDelegate, AVCapturePhotoCaptureDelegate {
         private let photoOutput = AVCapturePhotoOutput()
         private var isCapturing = false
         private var handler: ((UIImage) -> Void)?
@@ -158,280 +160,83 @@ extension ScanView {
                 type: parentView.codeTypes.first ?? .qr, image: nil, corners: []
             ))
         }
+        #endif
         
-        #else
+        public func reset() {
+            codesFound.removeAll()
+            didFinishScanning = false
+            lastTime = Date(timeIntervalSince1970: 0)
+        }
         
-        var captureSession: AVCaptureSession?
-        var previewLayer: AVCaptureVideoPreviewLayer!
-        let fallbackVideoCaptureDevice = AVCaptureDevice.default(for: .video)
-
-        private lazy var viewFinder: UIImageView? = {
-            guard let image = UIImage(named: "viewfinder", in: .module, with: nil) else {
-                return nil
-            }
-
-            let imageView = UIImageView(image: image)
-            imageView.translatesAutoresizingMaskIntoConstraints = false
-            return imageView
-        }()
-        
-        private lazy var manualCaptureButton: UIButton = {
-            let button = UIButton(type: .system)
-            let image = UIImage(named: "capture", in: .module, with: nil)
-            button.setBackgroundImage(image, for: .normal)
-            button.addTarget(self, action: #selector(manualCapturePressed), for: .touchUpInside)
-            button.translatesAutoresizingMaskIntoConstraints = false
-            return button
-        }()
-
-        private lazy var manualSelectButton: UIButton = {
-            let button = UIButton(type: .system)
-            let image = UIImage(systemName: "photo.on.rectangle")
-            let background = UIImage(systemName: "capsule.fill")?.withTintColor(.systemBackground, renderingMode: .alwaysOriginal)
-            button.setImage(image, for: .normal)
-            button.setBackgroundImage(background, for: .normal)
-            button.addTarget(self, action: #selector(openGalleryFromButton), for: .touchUpInside)
-            button.translatesAutoresizingMaskIntoConstraints = false
-            return button
-        }()
-
-        override public func viewDidLoad() {
-            super.viewDidLoad()
-            self.addOrientationDidChangeObserver()
-            self.setBackgroundColor()
-            self.handleCameraPermission()
+        public func readyManualCapture() {
+            guard parentView.scanMode == .manual else { return }
+            self.reset()
+            lastTime = Date()
         }
 
-        override public func viewWillLayoutSubviews() {
-            previewLayer?.frame = view.layer.bounds
-        }
-
-        @objc func updateOrientation() {
-            guard let orientation = view.window?.windowScene?.interfaceOrientation else { return }
-            guard let connection = captureSession?.connections.last, connection.isVideoOrientationSupported else { return }
-            switch orientation {
-            case .portrait:
-                connection.videoOrientation = .portrait
-            case .landscapeLeft:
-                connection.videoOrientation = .landscapeLeft
-            case .landscapeRight:
-                connection.videoOrientation = .landscapeRight
-            case .portraitUpsideDown:
-                connection.videoOrientation = .portraitUpsideDown
-            default:
-                connection.videoOrientation = .portrait
-            }
-        }
-
-        override public func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            updateOrientation()
-        }
-
-        override public func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-
-            setupSession()
-        }
-      
-        private func setupSession() {
-            guard let captureSession = captureSession else {
-                return
-            }
-            
-            if previewLayer == nil {
-                previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
-            }
-
-            previewLayer.frame = view.layer.bounds
-            previewLayer.videoGravity = .resizeAspectFill
-            view.layer.addSublayer(previewLayer)
-            addviewfinder()
-
-            reset()
-
-            if (captureSession.isRunning == false) {
-                DispatchQueue.global(qos: .userInteractive).async {
-                    self.captureSession?.startRunning()
-                }
-            }
-        }
-
-        private func handleCameraPermission() {
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
-                case .restricted:
-                    break
-                case .denied:
-                    self.didFail(reason: .permissionDenied)
-                case .notDetermined:
-                    self.requestCameraAccess {
-                        self.setupCaptureDevice()
-                        DispatchQueue.main.async {
-                            self.setupSession()
+        public func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            if let metadataObject = metadataObjects.first {
+                guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject else { return }
+                guard let stringValue = readableObject.stringValue else { return }
+                
+                guard didFinishScanning == false else { return }
+                
+                let photoSettings = AVCapturePhotoSettings()
+                guard !isCapturing else { return }
+                isCapturing = true
+                
+                handler = { [self] image in
+                    let result = ScanResult(string: stringValue, type: readableObject.type, image: image, corners: readableObject.corners)
+                    
+                    switch parentView.scanMode {
+                    case .once:
+                        found(result)
+                        // make sure we only trigger scan once per use
+                        didFinishScanning = true
+                        
+                    case .manual:
+                        if !didFinishScanning, isWithinManualCaptureInterval() {
+                            found(result)
+                            didFinishScanning = true
+                        }
+                        
+                    case .oncePerCode:
+                        if !codesFound.contains(stringValue) {
+                            codesFound.insert(stringValue)
+                            found(result)
+                        }
+                        
+                    case .continuous:
+                        if isPastScanInterval() {
+                            found(result)
                         }
                     }
-                case .authorized:
-                    self.setupCaptureDevice()
-                    self.setupSession()
-                    
-                default:
-                    break
-            }
-        }
-
-        private func requestCameraAccess(completion: (() -> Void)?) {
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] status in
-                guard status else {
-                    self?.didFail(reason: .permissionDenied)
-                    return
                 }
-                completion?()
-            }
-        }
-      
-        private func addOrientationDidChangeObserver() {
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(updateOrientation),
-                name: Notification.Name("UIDeviceOrientationDidChangeNotification"),
-                object: nil
-            )
-        }
-      
-        private func setBackgroundColor(_ color: UIColor = .black) {
-            view.backgroundColor = color
-        }
-      
-        private func setupCaptureDevice() {
-            captureSession = AVCaptureSession()
-
-            guard let videoCaptureDevice = parentView.videoCaptureDevice ?? fallbackVideoCaptureDevice else {
-                return
-            }
-
-            let videoInput: AVCaptureDeviceInput
-
-            do {
-                videoInput = try AVCaptureDeviceInput(device: videoCaptureDevice)
-            } catch {
-                didFail(reason: .initError(error))
-                return
-            }
-
-            if (captureSession!.canAddInput(videoInput)) {
-                captureSession!.addInput(videoInput)
-            } else {
-                didFail(reason: .badInput)
-                return
-            }
-            let metadataOutput = AVCaptureMetadataOutput()
-
-            if (captureSession!.canAddOutput(metadataOutput)) {
-                captureSession!.addOutput(metadataOutput)
-                captureSession?.addOutput(photoOutput)
-                metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
-                metadataOutput.metadataObjectTypes = parentView.codeTypes
-            } else {
-                didFail(reason: .badOutput)
-                return
+                photoOutput.capturePhoto(with: photoSettings, delegate: self)
             }
         }
 
-        private func addviewfinder() {
-            guard showViewfinder, let imageView = viewFinder else { return }
-
-            view.addSubview(imageView)
-
-            NSLayoutConstraint.activate([
-                imageView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-                imageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                imageView.widthAnchor.constraint(equalToConstant: 200),
-                imageView.heightAnchor.constraint(equalToConstant: 200),
-            ])
-        }
-
-        override public func viewDidDisappear(_ animated: Bool) {
-            super.viewDidDisappear(animated)
-
-            if (captureSession?.isRunning == true) {
-                DispatchQueue.global(qos: .userInteractive).async {
-                    self.captureSession?.stopRunning()
-                }
-            }
-
-            NotificationCenter.default.removeObserver(self)
-        }
-
-        override public var prefersStatusBarHidden: Bool {
-            true
-        }
-
-        override public var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-            .all
-        }
-
-        /** Touch the screen for autofocus */
-        public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard touches.first?.view == view,
-                  let touchPoint = touches.first,
-                  let device = parentView.videoCaptureDevice ?? fallbackVideoCaptureDevice,
-                  device.isFocusPointOfInterestSupported
-            else { return }
-
-            let videoView = view
-            let screenSize = videoView!.bounds.size
-            let xPoint = touchPoint.location(in: videoView).y / screenSize.height
-            let yPoint = 1.0 - touchPoint.location(in: videoView).x / screenSize.width
-            let focusPoint = CGPoint(x: xPoint, y: yPoint)
-
-            do {
-                try device.lockForConfiguration()
-            } catch {
-                return
-            }
-
-            // Focus to the correct point, make continiuous focus and exposure so the point stays sharp when moving the device closer
-            device.focusPointOfInterest = focusPoint
-            device.focusMode = .continuousAutoFocus
-            device.exposurePointOfInterest = focusPoint
-            device.exposureMode = AVCaptureDevice.ExposureMode.continuousAutoExposure
-            device.unlockForConfiguration()
+        func isPastScanInterval() -> Bool {
+            Date().timeIntervalSince(lastTime) >= parentView.scanInterval
         }
         
-        @objc func manualCapturePressed(_ sender: Any?) {
-            self.readyManualCapture()
+        func isWithinManualCaptureInterval() -> Bool {
+            Date().timeIntervalSince(lastTime) <= 0.5
         }
-        
-        func showManualCaptureButton(_ isManualCapture: Bool) {
-            if manualCaptureButton.superview == nil {
-                view.addSubview(manualCaptureButton)
-                NSLayoutConstraint.activate([
-                    manualCaptureButton.heightAnchor.constraint(equalToConstant: 60),
-                    manualCaptureButton.widthAnchor.constraint(equalTo: manualCaptureButton.heightAnchor),
-                    view.centerXAnchor.constraint(equalTo: manualCaptureButton.centerXAnchor),
-                    view.safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: manualCaptureButton.bottomAnchor, constant: 32)
-                ])
+
+        func found(_ result: ScanResult) {
+            lastTime = Date()
+
+            if parentView.shouldVibrateOnSuccess {
+                AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
             }
-            
-            view.bringSubviewToFront(manualCaptureButton)
-            manualCaptureButton.isHidden = !isManualCapture
+
+            parentView.completion(.success(result))
         }
-        
-        func showManualSelectButton(_ isManualSelect: Bool) {
-            if manualSelectButton.superview == nil {
-                view.addSubview(manualSelectButton)
-                NSLayoutConstraint.activate([
-                    manualSelectButton.heightAnchor.constraint(equalToConstant: 50),
-                    manualSelectButton.widthAnchor.constraint(equalToConstant: 60),
-                    view.centerXAnchor.constraint(equalTo: manualSelectButton.centerXAnchor),
-                    view.safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: manualSelectButton.bottomAnchor, constant: 32)
-                ])
-            }
-            
-            view.bringSubviewToFront(manualSelectButton)
-            manualSelectButton.isHidden = !isManualSelect
+
+        func didFail(reason: ScanError) {
+            parentView.completion(.failure(reason))
         }
-        #endif
         
         func updateViewController(isTorchOn: Bool, isGalleryPresented: Bool, isManualCapture: Bool, isManualSelect: Bool) {
             if let backCamera = AVCaptureDevice.default(for: AVMediaType.video),
@@ -453,9 +258,9 @@ extension ScanView {
         }
         
     }
-    #else
+    #elseif os(macOS)
     @available(macOS 13.0, *)
-    public class ScannerViewController: NSViewController, AVCaptureMetadataOutputObjectsDelegate {
+    public class ScannerViewController: NSViewController, AVCaptureMetadataOutputObjectsDelegate, AVCapturePhotoCaptureDelegate {
         private let photoOutput = AVCapturePhotoOutput()
         private var isCapturing = false
         private var handler: ((NSImage) -> Void)?
@@ -696,6 +501,82 @@ extension ScanView {
             manualCaptureButton.isHidden = !isManualCapture
         }
         
+        public func reset() {
+            codesFound.removeAll()
+            didFinishScanning = false
+            lastTime = Date(timeIntervalSince1970: 0)
+        }
+        
+        public func readyManualCapture() {
+            guard parentView.scanMode == .manual else { return }
+            self.reset()
+            lastTime = Date()
+        }
+
+        public func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            if let metadataObject = metadataObjects.first {
+                guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject else { return }
+                guard let stringValue = readableObject.stringValue else { return }
+                
+                guard didFinishScanning == false else { return }
+                
+                let photoSettings = AVCapturePhotoSettings()
+                guard !isCapturing else { return }
+                isCapturing = true
+                
+                handler = { [self] image in
+                    let result = ScanResult(string: stringValue, type: readableObject.type, image: image, corners: readableObject.corners)
+                    
+                    switch parentView.scanMode {
+                    case .once:
+                        found(result)
+                        // make sure we only trigger scan once per use
+                        didFinishScanning = true
+                        
+                    case .manual:
+                        if !didFinishScanning, isWithinManualCaptureInterval() {
+                            found(result)
+                            didFinishScanning = true
+                        }
+                        
+                    case .oncePerCode:
+                        if !codesFound.contains(stringValue) {
+                            codesFound.insert(stringValue)
+                            found(result)
+                        }
+                        
+                    case .continuous:
+                        if isPastScanInterval() {
+                            found(result)
+                        }
+                    }
+                }
+                photoOutput.capturePhoto(with: photoSettings, delegate: self)
+            }
+        }
+
+        func isPastScanInterval() -> Bool {
+            Date().timeIntervalSince(lastTime) >= parentView.scanInterval
+        }
+        
+        func isWithinManualCaptureInterval() -> Bool {
+            Date().timeIntervalSince(lastTime) <= 0.5
+        }
+
+        func found(_ result: ScanResult) {
+            lastTime = Date()
+
+            if parentView.shouldVibrateOnSuccess {
+                AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            }
+
+            parentView.completion(.success(result))
+        }
+
+        func didFail(reason: ScanError) {
+            parentView.completion(.failure(reason))
+        }
+        
         func updateViewController(isTorchOn: Bool, isGalleryPresented: Bool, isManualCapture: Bool, isManualSelect: Bool) {
             if let backCamera = AVCaptureDevice.default(for: AVMediaType.video),
                backCamera.hasTorch
@@ -714,87 +595,7 @@ extension ScanView {
     #endif
 }
 
-@available(iOS 13.0, macCatalyst 14.0, macOS 13.0, *)
-extension ScanView.ScannerViewController {
-    
-    public func reset() {
-        codesFound.removeAll()
-        didFinishScanning = false
-        lastTime = Date(timeIntervalSince1970: 0)
-    }
-    
-    public func readyManualCapture() {
-        guard parentView.scanMode == .manual else { return }
-        self.reset()
-        lastTime = Date()
-    }
-
-    public func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-        if let metadataObject = metadataObjects.first {
-            guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject else { return }
-            guard let stringValue = readableObject.stringValue else { return }
-            
-            guard didFinishScanning == false else { return }
-            
-            let photoSettings = AVCapturePhotoSettings()
-            guard !isCapturing else { return }
-            isCapturing = true
-            
-            handler = { [self] image in
-                let result = ScanResult(string: stringValue, type: readableObject.type, image: image, corners: readableObject.corners)
-                
-                switch parentView.scanMode {
-                case .once:
-                    found(result)
-                    // make sure we only trigger scan once per use
-                    didFinishScanning = true
-                    
-                case .manual:
-                    if !didFinishScanning, isWithinManualCaptureInterval() {
-                        found(result)
-                        didFinishScanning = true
-                    }
-                    
-                case .oncePerCode:
-                    if !codesFound.contains(stringValue) {
-                        codesFound.insert(stringValue)
-                        found(result)
-                    }
-                    
-                case .continuous:
-                    if isPastScanInterval() {
-                        found(result)
-                    }
-                }
-            }
-            photoOutput.capturePhoto(with: photoSettings, delegate: self)
-        }
-    }
-
-    func isPastScanInterval() -> Bool {
-        Date().timeIntervalSince(lastTime) >= parentView.scanInterval
-    }
-    
-    func isWithinManualCaptureInterval() -> Bool {
-        Date().timeIntervalSince(lastTime) <= 0.5
-    }
-
-    func found(_ result: ScanResult) {
-        lastTime = Date()
-
-        if parentView.shouldVibrateOnSuccess {
-            AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        }
-
-        parentView.completion(.success(result))
-    }
-
-    func didFail(reason: ScanError) {
-        parentView.completion(.failure(reason))
-    }
-    
-}
-
+#if canImport(AVCaptureDevice)
 @available(iOS 13.0, macCatalyst 14.0, macOS 13.0, *)
 extension ScanView.ScannerViewController: AVCapturePhotoCaptureDelegate {
     
@@ -837,11 +638,12 @@ extension ScanView.ScannerViewController: AVCapturePhotoCaptureDelegate {
     }
     
 }
+#endif
 
-@available(iOS 13.0, macCatalyst 14.0, macOS 13.0, *)
+    
+#if os(iOS)
 public extension AVCaptureDevice {
     
-    #if canImport(UIKit)
     /// This returns the Ultra Wide Camera on capable devices and the default Camera for Video otherwise.
     static var bestForVideo: AVCaptureDevice? {
         let deviceHasUltraWideCamera = !AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInUltraWideCamera],
@@ -851,7 +653,10 @@ public extension AVCaptureDevice {
                                                                   for: .video,
                                                                   position: .back) : AVCaptureDevice.default(for: .video)
     }
-    #else
+}
+#elseif os(macOS)
+public extension AVCaptureDevice {
+    
     /// This returns the Ultra Wide Camera on capable devices and the default Camera for Video otherwise.
     static var bestForVideo: AVCaptureDevice? {
         let deviceHasUltraWideCamera = !AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
@@ -861,9 +666,9 @@ public extension AVCaptureDevice {
                                                                   for: .video,
                                                                   position: .back) : AVCaptureDevice.default(for: .video)
     }
-    #endif
-    
 }
+#endif
+
 
 #if canImport(AppKit)
 extension NSView {
