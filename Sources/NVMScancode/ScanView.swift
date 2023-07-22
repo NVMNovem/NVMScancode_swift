@@ -306,6 +306,20 @@ extension ScanView {
             manualCaptureButton.isHidden = !isManualCapture
         }
         
+        func showManualSelectButton(_ isManualSelect: Bool) {
+            if manualSelectButton.superview == nil {
+                view.addSubview(manualSelectButton)
+                NSLayoutConstraint.activate([
+                    manualSelectButton.heightAnchor.constraint(equalToConstant: 50),
+                    manualSelectButton.widthAnchor.constraint(equalToConstant: 60),
+                    view.centerXAnchor.constraint(equalTo: manualSelectButton.centerXAnchor),
+                    view.safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: manualSelectButton.bottomAnchor, constant: 32)
+                ])
+            }
+            
+            view.bringSubviewToFront(manualSelectButton)
+            manualSelectButton.isHidden = !isManualSelect
+        }
     }
     #elseif os(macOS)
     @available(macOS 13.0, *)
