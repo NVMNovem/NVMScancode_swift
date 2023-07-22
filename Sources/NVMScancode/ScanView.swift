@@ -62,6 +62,36 @@ extension ScanView {
             super.init(coder: coder)
         }
         
+        private lazy var viewFinder: UIImageView? = {
+            guard let image = UIImage(named: "viewfinder", in: .module, with: nil) else {
+                return nil
+            }
+
+            let imageView = UIImageView(image: image)
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+            return imageView
+        }()
+        
+        private lazy var manualCaptureButton: UIButton = {
+            let button = UIButton(type: .system)
+            let image = UIImage(named: "capture", in: .module, with: nil)
+            button.setBackgroundImage(image, for: .normal)
+            button.addTarget(self, action: #selector(manualCapturePressed), for: .touchUpInside)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            return button
+        }()
+
+        private lazy var manualSelectButton: UIButton = {
+            let button = UIButton(type: .system)
+            let image = UIImage(systemName: "photo.on.rectangle")
+            let background = UIImage(systemName: "capsule.fill")?.withTintColor(.systemBackground, renderingMode: .alwaysOriginal)
+            button.setImage(image, for: .normal)
+            button.setBackgroundImage(background, for: .normal)
+            button.addTarget(self, action: #selector(openGalleryFromButton), for: .touchUpInside)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            return button
+        }()
+        
         func openGallery() {
             isGalleryShowing = true
             let imagePicker = UIImagePickerController()
@@ -255,6 +285,25 @@ extension ScanView {
             showManualCaptureButton(isManualCapture)
             showManualSelectButton(isManualSelect)
             #endif
+        }
+        
+        @objc func manualCapturePressed(_ sender: Any?) {
+            self.readyManualCapture()
+        }
+        
+        func showManualCaptureButton(_ isManualCapture: Bool) {
+            if manualCaptureButton.superview == nil {
+                view.addSubview(manualCaptureButton)
+                NSLayoutConstraint.activate([
+                    manualCaptureButton.heightAnchor.constraint(equalToConstant: 60),
+                    manualCaptureButton.widthAnchor.constraint(equalTo: manualCaptureButton.heightAnchor),
+                    view.centerXAnchor.constraint(equalTo: manualCaptureButton.centerXAnchor),
+                    view.safeAreaLayoutGuide.bottomAnchor.constraint(equalTo: manualCaptureButton.bottomAnchor, constant: 32)
+                ])
+            }
+            
+            view.bringSubviewToFront(manualCaptureButton)
+            manualCaptureButton.isHidden = !isManualCapture
         }
         
     }
